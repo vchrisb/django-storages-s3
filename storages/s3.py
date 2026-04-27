@@ -151,6 +151,10 @@ class S3File(CompressedFileMixin, File):
     def write(self, content):
         if "w" not in self._mode:
             raise AttributeError("File was not opened in write mode.")
+        bstr = to_bytes(content)
+        if not bstr:
+            return super().write(bstr)
+
         self._is_dirty = True
         if self._multipart is None:
             self._multipart = self.obj.initiate_multipart_upload(
@@ -159,7 +163,6 @@ class S3File(CompressedFileMixin, File):
             self._parts = []
         if self.buffer_size <= self._buffer_file_size:
             self._flush_write_buffer()
-        bstr = to_bytes(content)
         self._raw_bytes_written += len(bstr)
         return super().write(bstr)
 

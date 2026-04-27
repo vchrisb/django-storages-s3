@@ -412,6 +412,30 @@ class S3StorageTests(TestCase):
             StorageClass="REDUCED_REDUNDANCY",
         )
 
+    def test_storage_open_write_empty_bytes(self):
+        """
+        Test writing empty bytes and closing.
+
+        A file should be created by obj.put(...), not by an empty multipart upload.
+        """
+        name = "test_open_write_empty_bytes.txt"
+
+        with self.storage.open(name, "wb") as file:
+            self.storage.bucket.Object.assert_called_with(name)
+            obj = self.storage.bucket.Object.return_value
+            obj.load.side_effect = ClientError(
+                {"Error": {}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                "head_bucket",
+            )
+
+            # Set the name of the mock object
+            obj.key = name
+            self.assertEqual(file.write(b""), 0)
+
+        obj.initiate_multipart_upload.assert_not_called()
+        obj.load.assert_called_once_with()
+        obj.put.assert_called_once_with(Body=b"", ContentType="text/plain")
+
     def test_storage_open_no_overwrite_existing(self):
         """
         Test opening an existing file in write mode and closing without writing.
@@ -452,18 +476,10 @@ class S3StorageTests(TestCase):
             # Set the name of the mock object
             obj.key = name
 
-            # Initiate the multipart upload
-            file.write("")
-            obj.initiate_multipart_upload.assert_called_with(
-                ContentType="text/plain",
-                ServerSideEncryption="AES256",
-                StorageClass="REDUCED_REDUNDANCY",
-            )
-            multipart = obj.initiate_multipart_upload.return_value
-
             # Write content at least twice as long as the buffer size
             written_content = ""
             counter = 1
+            multipart = obj.initiate_multipart_upload.return_value
             multipart.Part.return_value.upload.side_effect = [
                 {"ETag": "123"},
                 {"ETag": "456"},
@@ -476,6 +492,12 @@ class S3StorageTests(TestCase):
                 file.write(content)
                 written_content += content
                 counter += 1
+
+            obj.initiate_multipart_upload.assert_called_with(
+                ContentType="text/plain",
+                ServerSideEncryption="AES256",
+                StorageClass="REDUCED_REDUNDANCY",
+            )
 
         self.assertListEqual(
             multipart.Part.call_args_list, [mock.call(1), mock.call(2)]
