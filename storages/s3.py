@@ -311,7 +311,7 @@ class S3Storage(CompressStorageMixin, BaseStorage):
             "bucket_name": setting("AWS_STORAGE_BUCKET_NAME"),
             "querystring_auth": setting("AWS_QUERYSTRING_AUTH", True),
             "querystring_expire": setting("AWS_QUERYSTRING_EXPIRE", 3600),
-            "signature_version": setting("AWS_S3_SIGNATURE_VERSION"),
+            "signature_version": setting("AWS_S3_SIGNATURE_VERSION", "s3v4"),
             "location": setting("AWS_LOCATION", ""),
             "custom_domain": setting("AWS_S3_CUSTOM_DOMAIN"),
             "public_domain": setting("AWS_S3_PUBLIC_DOMAIN"),

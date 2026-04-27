@@ -56,6 +56,21 @@ class S3StorageTests(TestCase):
             self.assertEqual(30, resource.call_args[1]["config"].max_pool_connections)
 
     @mock.patch("boto3.Session.resource")
+    def test_default_signature_version(self, resource):
+        storage = s3.S3Storage()
+        _ = storage.connection
+        resource.assert_called_once()
+        self.assertEqual("s3v4", resource.call_args[1]["config"].signature_version)
+
+    @mock.patch("boto3.Session.resource")
+    def test_signature_version_setting(self, resource):
+        with override_settings(AWS_S3_SIGNATURE_VERSION="s3"):
+            storage = s3.S3Storage()
+            _ = storage.connection
+            resource.assert_called_once()
+            self.assertEqual("s3", resource.call_args[1]["config"].signature_version)
+
+    @mock.patch("boto3.Session.resource")
     def test_connection_unsiged(self, resource):
         with override_settings(AWS_S3_ADDRESSING_STYLE="virtual"):
             storage = s3.S3Storage()
