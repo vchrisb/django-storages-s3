@@ -36,6 +36,7 @@ class S3StorageTests(TestCase):
         self.storage = s3.S3Storage()
         self.storage._connections.connection = mock.MagicMock()
         self.storage._unsigned_connections.connection = mock.MagicMock()
+        self.storage._public_connections.connection = mock.MagicMock()
 
     @mock.patch("boto3.Session")
     def test_s3_session(self, session):
@@ -65,6 +66,16 @@ class S3StorageTests(TestCase):
             )
             self.assertEqual(
                 "virtual", resource.call_args[1]["config"].s3["addressing_style"]
+            )
+
+    @mock.patch("boto3.Session.resource")
+    def test_public_connection(self, resource):
+        with override_settings(AWS_S3_PUBLIC_DOMAIN="public.example.com"):
+            storage = s3.S3Storage()
+            _ = storage.public_connection
+            resource.assert_called_once()
+            self.assertEqual(
+                "https://public.example.com", resource.call_args[1]["endpoint_url"]
             )
 
     def test_pickle_with_bucket(self):
@@ -818,6 +829,40 @@ class S3StorageTests(TestCase):
         parsed_url = urlparse(url)
         self.assertEqual(parsed_url.path, "/filename.mp4")
         self.assertEqual(parsed_url.query, "version=10")
+
+    def test_public_domain_unsigned_url(self):
+        self.storage.public_domain = "mock.cloudfront.net"
+        self.storage.querystring_auth = False
+
+        url = self.storage.url("filename.mp4", parameters={"version": 10})
+
+        parsed_url = urlparse(url)
+        self.assertEqual(parsed_url.scheme, "https")
+        self.assertEqual(parsed_url.netloc, "mock.cloudfront.net")
+        self.assertEqual(parsed_url.path, "/filename.mp4")
+        self.assertEqual(parsed_url.query, "version=10")
+        self.assertFalse(
+            self.storage.unsigned_connection.meta.client.generate_presigned_url.called
+        )
+
+    def test_public_domain_signed_url(self):
+        name = "filename.mp4"
+        url = "https://mock.cloudfront.net/bucket/%s?signature=abc" % name
+        self.storage.public_domain = "mock.cloudfront.net"
+        self.storage.bucket_name = "bucket"
+        client = self.storage.public_connection.meta.client
+        client.generate_presigned_url.return_value = url
+
+        self.assertEqual(self.storage.url(name), url)
+        client.generate_presigned_url.assert_called_once_with(
+            "get_object",
+            Params={"Bucket": self.storage.bucket_name, "Key": name},
+            ExpiresIn=self.storage.querystring_expire,
+            HttpMethod=None,
+        )
+        self.assertFalse(
+            self.storage.connection.meta.client.generate_presigned_url.called
+        )
 
     @skipIf(threading is None, "Test requires threading")
     def test_connection_threading(self):

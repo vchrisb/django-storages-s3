@@ -268,6 +268,7 @@ class S3Storage(CompressStorageMixin, BaseStorage):
         self._bucket = None
         self._connections = threading.local()
         self._unsigned_connections = threading.local()
+        self._public_connections = threading.local()
 
         if self.client_config is None:
             self.client_config = Config(
@@ -313,6 +314,7 @@ class S3Storage(CompressStorageMixin, BaseStorage):
             "signature_version": setting("AWS_S3_SIGNATURE_VERSION"),
             "location": setting("AWS_LOCATION", ""),
             "custom_domain": setting("AWS_S3_CUSTOM_DOMAIN"),
+            "public_domain": setting("AWS_S3_PUBLIC_DOMAIN"),
             "addressing_style": setting("AWS_S3_ADDRESSING_STYLE"),
             "file_name_charset": setting("AWS_S3_FILE_NAME_CHARSET", "utf-8"),
             "gzip": setting("AWS_IS_GZIPPED", False),
@@ -342,12 +344,14 @@ class S3Storage(CompressStorageMixin, BaseStorage):
         state = self.__dict__.copy()
         state.pop("_connections", None)
         state.pop("_unsigned_connections", None)
+        state.pop("_public_connections", None)
         state.pop("_bucket", None)
         return state
 
     def __setstate__(self, state):
         state["_connections"] = threading.local()
         state["_unsigned_connections"] = threading.local()
+        state["_public_connections"] = threading.local()
         state["_bucket"] = None
         self.__dict__ = state
 
@@ -381,6 +385,21 @@ class S3Storage(CompressStorageMixin, BaseStorage):
                 verify=self.verify,
             )
         return self._unsigned_connections.connection
+
+    @property
+    def public_connection(self):
+        public_connection = getattr(self._public_connections, "connection", None)
+        if public_connection is None:
+            session = self._create_session()
+            self._public_connections.connection = session.resource(
+                "s3",
+                region_name=self.region_name,
+                use_ssl=self.use_ssl,
+                endpoint_url=f"{self.url_protocol}//{self.public_domain}",
+                config=self.client_config,
+                verify=self.verify,
+            )
+        return self._public_connections.connection
 
     def _create_session(self):
         """
@@ -558,6 +577,24 @@ class S3Storage(CompressStorageMixin, BaseStorage):
         else:
             return make_naive(entry.last_modified)
 
+    def _build_url(self, domain, name, params):
+        return "{}//{}/{}{}".format(
+            self.url_protocol,
+            domain,
+            filepath_to_uri(name),
+            "?{}".format(urlencode(params)) if params else "",
+        )
+
+    def _get_presigned_url_params(self, name, params, bucket_name):
+        params["Bucket"] = bucket_name
+        params["Key"] = name
+        return params
+
+    def _generate_presigned_url(self, connection, params, expire, http_method):
+        return connection.meta.client.generate_presigned_url(
+            "get_object", Params=params, ExpiresIn=expire, HttpMethod=http_method
+        )
+
     def url(self, name, parameters=None, expire=None, http_method=None):
         # Preserve the trailing slash after normalizing the path.
         name = self._normalize_name(clean_name(name))
@@ -565,26 +602,22 @@ class S3Storage(CompressStorageMixin, BaseStorage):
         if expire is None:
             expire = self.querystring_expire
 
+        if self.public_domain:
+            if self.querystring_auth:
+                params = self._get_presigned_url_params(name, params, self.bucket_name)
+                return self._generate_presigned_url(
+                    self.public_connection, params, expire, http_method
+                )
+            return self._build_url(self.public_domain, name, params)
+
         if self.custom_domain:
-            url = "{}//{}/{}{}".format(
-                self.url_protocol,
-                self.custom_domain,
-                filepath_to_uri(name),
-                "?{}".format(urlencode(params)) if params else "",
-            )
-
-            return url
-
-        params["Bucket"] = self.bucket.name
-        params["Key"] = name
+            return self._build_url(self.custom_domain, name, params)
 
         connection = (
             self.connection if self.querystring_auth else self.unsigned_connection
         )
-        url = connection.meta.client.generate_presigned_url(
-            "get_object", Params=params, ExpiresIn=expire, HttpMethod=http_method
-        )
-        return url
+        params = self._get_presigned_url_params(name, params, self.bucket.name)
+        return self._generate_presigned_url(connection, params, expire, http_method)
 
     def get_available_name(self, name, max_length=None):
         """Overwrite existing file with the same name."""

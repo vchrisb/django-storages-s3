@@ -84,8 +84,11 @@ All settings can be provided as `OPTIONS` keys (for per-backend configuration) o
 | --- | --- | --- | --- |
 | `querystring_auth` | `AWS_QUERYSTRING_AUTH` | `True` | Whether generated URLs include query parameter authentication. Set to `False` for public buckets. |
 | `querystring_expire` | `AWS_QUERYSTRING_EXPIRE` | `3600` | The number of seconds a generated URL is valid for. |
-| `url_protocol` | `AWS_S3_URL_PROTOCOL` | `"https:"` | The protocol for constructed URLs. Must end in `:`. Only effective when `custom_domain` is set. |
+| `url_protocol` | `AWS_S3_URL_PROTOCOL` | `"https:"` | The protocol for constructed URLs. Must end in `:`. Only effective when `custom_domain` or `public_domain` is set. |
 | `custom_domain` | `AWS_S3_CUSTOM_DOMAIN` | `None` | Custom domain for constructed URLs. Must not end in `/`. |
+| `public_domain` | `AWS_S3_PUBLIC_DOMAIN` | `None` | Public domain for generated URLs when `endpoint_url` is only reachable by Django. Must not end in `/`. If `querystring_auth` is enabled, presigned URLs are generated against this domain. |
+
+When `public_domain` is set, `url()` uses it for external URLs while storage operations continue to use `endpoint_url`.
 
 ### Connection
 
