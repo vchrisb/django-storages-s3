@@ -203,7 +203,10 @@ class S3File(CompressedFileMixin, File):
 
         try:
             # Check if the object exists on the server; if so, don't do anything
-            self.obj.load()
+            params = _filter_download_params(
+                self._storage.get_object_parameters(self.name)
+            )
+            self.obj.load(**params)
         except ClientError as err:
             if err.response["ResponseMetadata"]["HTTPStatusCode"] == 404:
                 self.obj.put(

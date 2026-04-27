@@ -458,6 +458,28 @@ class S3StorageTests(TestCase):
         obj.load.assert_called_once_with()
         obj.put.assert_not_called()
 
+    def test_storage_open_no_overwrite_existing_ssec(self):
+        """
+        Test opening an SSE-C encrypted existing file in write mode without writing.
+        """
+        name = "test_open_no_overwrite_existing_ssec.txt"
+
+        self.storage.object_parameters = {
+            "SSECustomerAlgorithm": "AES256",
+            "SSECustomerKey": "xyz",
+            "CacheControl": "never",
+        }
+
+        with self.storage.open(name, "wb"):
+            self.storage.bucket.Object.assert_called_with(name)
+            obj = self.storage.bucket.Object.return_value
+            obj.key = name
+
+        obj.load.assert_called_once_with(
+            SSECustomerAlgorithm="AES256", SSECustomerKey="xyz"
+        )
+        obj.put.assert_not_called()
+
     def test_storage_write_beyond_buffer_size(self):
         """
         Test writing content that exceeds the buffer size
