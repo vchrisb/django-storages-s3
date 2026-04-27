@@ -538,6 +538,27 @@ class S3StorageTests(TestCase):
             }
         )
 
+    def test_storage_write_aborts_multipart_on_complete_error(self):
+        name = "test_open_write_complete_error.txt"
+        content = "new content"
+
+        with self.assertRaisesMessage(RuntimeError, "complete failed"):
+            with self.storage.open(name, "wb") as file:
+                self.storage.bucket.Object.assert_called_with(name)
+                obj = self.storage.bucket.Object.return_value
+                obj.key = name
+
+                multipart = obj.initiate_multipart_upload.return_value
+                multipart.Part.return_value.upload.return_value = {"ETag": "123"}
+                multipart.complete.side_effect = RuntimeError("complete failed")
+                file.write(content)
+
+        multipart.Part.assert_called_once_with(1)
+        multipart.complete.assert_called_once_with(
+            MultipartUpload={"Parts": [{"ETag": "123", "PartNumber": 1}]}
+        )
+        multipart.abort.assert_called_once_with()
+
     def test_storage_exists(self):
         self.assertTrue(self.storage.exists("file.txt"))
         self.storage.connection.meta.client.head_object.assert_called_with(

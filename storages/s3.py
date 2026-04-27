@@ -4,6 +4,7 @@ import os
 import posixpath
 import tempfile
 import threading
+from contextlib import suppress
 from urllib.parse import urlencode
 
 import boto3
@@ -216,21 +217,28 @@ class S3File(CompressedFileMixin, File):
                 raise
 
     def close(self):
-        if self._is_dirty:
-            if self._multipart is not None:
-                self._flush_write_buffer()
-                self._multipart.complete(MultipartUpload={"Parts": self._parts})
-        else:
-            if self._multipart is not None:
-                self._multipart.abort()
-            if "w" in self._mode and self._raw_bytes_written == 0:
-                self._create_empty_on_close()
-        if self._file is not None:
-            self._file.close()
-            self._file = None
+        try:
+            if self._is_dirty:
+                if self._multipart is not None:
+                    try:
+                        self._flush_write_buffer()
+                        self._multipart.complete(MultipartUpload={"Parts": self._parts})
+                    except Exception:
+                        with suppress(Exception):
+                            self._multipart.abort()
+                        raise
+            else:
+                if self._multipart is not None:
+                    self._multipart.abort()
+                if "w" in self._mode and self._raw_bytes_written == 0:
+                    self._create_empty_on_close()
+        finally:
+            if self._file is not None:
+                self._file.close()
+                self._file = None
 
-        self._reset_file_properties()
-        self._closed = True
+            self._reset_file_properties()
+            self._closed = True
 
 
 @deconstructible
