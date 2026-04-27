@@ -833,13 +833,14 @@ class S3StorageTests(TestCase):
     def test_public_domain_unsigned_url(self):
         self.storage.public_domain = "mock.cloudfront.net"
         self.storage.querystring_auth = False
+        self.storage.bucket_name = "bucket"
 
         url = self.storage.url("filename.mp4", parameters={"version": 10})
 
         parsed_url = urlparse(url)
         self.assertEqual(parsed_url.scheme, "https")
         self.assertEqual(parsed_url.netloc, "mock.cloudfront.net")
-        self.assertEqual(parsed_url.path, "/filename.mp4")
+        self.assertEqual(parsed_url.path, "/bucket/filename.mp4")
         self.assertEqual(parsed_url.query, "version=10")
         self.assertFalse(
             self.storage.unsigned_connection.meta.client.generate_presigned_url.called

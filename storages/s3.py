@@ -577,7 +577,10 @@ class S3Storage(CompressStorageMixin, BaseStorage):
         else:
             return make_naive(entry.last_modified)
 
-    def _build_url(self, domain, name, params):
+    def _build_url(self, domain, name, params, bucket_name=None):
+        if bucket_name:
+            name = posixpath.join(bucket_name, name)
+
         return "{}//{}/{}{}".format(
             self.url_protocol,
             domain,
@@ -608,7 +611,9 @@ class S3Storage(CompressStorageMixin, BaseStorage):
                 return self._generate_presigned_url(
                     self.public_connection, params, expire, http_method
                 )
-            return self._build_url(self.public_domain, name, params)
+            return self._build_url(
+                self.public_domain, name, params, bucket_name=self.bucket_name
+            )
 
         if self.custom_domain:
             return self._build_url(self.custom_domain, name, params)
